@@ -13,6 +13,7 @@ class Layer_Dense:
 
     def forward(self, inputs):
         self.output = np.dot(inputs, self.weights) + self.biases
+        self.output = np.dot(inputs)
 
 
 class Activation_ReLU:
@@ -101,4 +102,7 @@ for iteration in range(10000):
         dense1.weights = best_dense1_weights.copy()
         dense1.biases = best_dense1_biases.copy()
         dense2.weights = best_dense2_weights.copy()
-        dense2.biases = best_dense2_biases.copy()
+        dense2.biases = best_dense2_biases.copy()\
+        
+plt.plot(X, y)
+plt.show()
