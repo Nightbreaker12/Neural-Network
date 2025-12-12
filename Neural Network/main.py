@@ -12,21 +12,50 @@ class Layer_Dense:
         self.biases = np.zeros((1, n_neurons))
 
     def forward(self, inputs):
+        self.inputs = inputs
         self.output = np.dot(inputs, self.weights) + self.biases
-        self.output = np.dot(inputs)
+
+    def backward(self, dvalues):
+        self.dweights = np.dot(self.inputs.T, dvalues)
+        self.dbaises = np.sum(dvalues, axis=0, keepdims=True)
+        self.dinputs = np.dot(dvalues, self.weights.T)
 
 
 class Activation_ReLU:
     def forward(self, inputs):
+        self.inputs = inputs
         self.output = np.maximum(0, inputs)
+
+    def backward(self, dvalues):
+        self.dinputs = dvalues.copy()
+        self.dinputs[self.inputs <= 0] = 0
+
 
 class Activation_Softmax:
     def forward(self, inputs):
+
+        self.inputs = inputs
+
         exp_values = np.exp(inputs - np.max(inputs, axis=1, keepdims=True))
 
         probabilities = exp_values / np.sum(exp_values, axis=1, keepdims=True)
 
         self.output = probabilities
+
+    def backward(self, dvalues):
+        self.dinputs = np.empty_like(dvalues)
+
+        for index, (single_output, single_dvalues) in \
+            enumerate(zip(self.output, dvalues)):
+            
+            single_output = single_output.reshape(-1,1)
+
+            jacobian_matrix = np.diagflat(single_output) - \
+                np.dot(single_output, single_output.T)
+            
+            self.dinputs[index] = np.dot(jacobian_matrix, single_dvalues)
+
+        
 
 class Loss:
     def calculate(self,output,y):
@@ -56,53 +85,78 @@ class Loss_CategoricalCrossentropy(Loss):
         negative_log_likelihoods = -np.log(correct_confidences)
         return negative_log_likelihoods
     
+    def backwards(self,dvalues, y_true):
+        samples = len(dvalues)
+        labels = len(dvalues[0])
+
+        if len(y_true.shape) == 1:
+            y_true = np.eye(labels)[y_true]
+
+        self.dinputs = -y_true / dvalues
+        self.dinputs = self.dinputs / samples
+
+
+class Activation_Softmax_Loss_CategoricalCrossentropy():
+    def __init__(self):
+        self.activation = Activation_Softmax()
+        self.loss = Loss_CategoricalCrossentropy()
+
+    def forward(self, inputs, y_true):
+        self.activation.forward(inputs)
+        self.output = self.activation.output
+
+        return self.loss.calculate(self.output, y_true)
+    
+    def backward(self, dvalues, y_true):
+        samples = len(dvalues)
+
+        if len(y_true.shape) == 2:
+            y_true = np.argmax(y_true, axis=1)
+        
+        self.dinputs = dvalues.copy()
+
+        self.dinputs[range(samples), y_true] -= 1
+
+        self.dinputs = self.dinputs / samples
+
 X, y = vertical_data(samples=100, classes=3)
 
 
 dense1 = Layer_Dense(2, 3)
 activation1 = Activation_ReLU()
+
 dense2 = Layer_Dense(3, 3)
-activation2 = Activation_Softmax()
+loss_activation = Activation_Softmax_Loss_CategoricalCrossentropy()
 
-loss_function = Loss_CategoricalCrossentropy()
+dense1.forward(X)
 
-lowest_loss = 9999999
+activation1.forward(dense1.output)
+dense2.forward(activation1.output)
 
-best_dense1_weights = dense1.weights.copy()
-best_dense1_biases = dense1.biases.copy()
-best_dense2_weights = dense2.weights.copy()
-best_dense2_biases = dense2.biases.copy()
+loss = loss_activation.forward(dense2.output, y)
+
+print(loss_activation.output[:5])
+
+print('loss:', loss)
+
+predictions = np.argmax(loss_activation.output, axis=1)
+if len(y.shape) == 2:
+    y = np.argmax(y,axis=1)
+accuracy = np.mean(predictions==y)
+
+print('acc:', accuracy)
 
 
-for iteration in range(10000):
+loss_activation.backward(loss_activation.output, y)
+dense2.backward(loss_activation.dinputs)
+activation1.backward(dense2.dinputs)
+dense1.backward(activation1.dinputs)
 
-    dense1.weights = 0.05 * np.random.randn(2,3)
-    dense1.biases = 0.05 * np.random.randn(1,3)
-    dense2.weights = 0.05 * np.random.randn(3,3)
-    dense2.biases = 0.05 * np.random.randn(1,3)
+print(dense1.weights)
+print(dense1.dbaises)
+print(dense2.dweights)
+print(dense2.dbaises)
 
-    dense1.forward(X)
-    activation1.forward(dense1.output)
-    dense2.forward(activation1.output)
-    activation2.forward(dense2.output)
-
-    loss = loss_function.calculate(activation2.output, y)
-
-    predictions = np.argmax(activation2.output, axis=1)
-    accuracy = np.mean(predictions==y)
-    if loss < lowest_loss:
-        print('New set of weights found, iteration:', iteration,
-              'loss:', loss, 'acc:', accuracy)
-        best_dense1_weights = dense1.weights.copy()
-        best_dense1_biases = dense1.biases.copy()
-        best_dense2_weights = dense2.weights.copy()
-        best_dense2_biases = dense2.biases.copy()
-        lowest_loss = loss
-    else:
-        dense1.weights = best_dense1_weights.copy()
-        dense1.biases = best_dense1_biases.copy()
-        dense2.weights = best_dense2_weights.copy()
-        dense2.biases = best_dense2_biases.copy()\
         
 plt.plot(X, y)
 plt.show()
