@@ -1,6 +1,6 @@
 import numpy as np
 import nnfs
-from nnfs.datasets import vertical_data
+from nnfs.datasets import spiral_data
 import matplotlib.pyplot as plt
 
 nnfs.init()
@@ -17,7 +17,7 @@ class Layer_Dense:
 
     def backward(self, dvalues):
         self.dweights = np.dot(self.inputs.T, dvalues)
-        self.dbaises = np.sum(dvalues, axis=0, keepdims=True)
+        self.dbiases = np.sum(dvalues, axis=0, keepdims=True)
         self.dinputs = np.dot(dvalues, self.weights.T)
 
 
@@ -119,44 +119,176 @@ class Activation_Softmax_Loss_CategoricalCrossentropy():
 
         self.dinputs = self.dinputs / samples
 
-X, y = vertical_data(samples=100, classes=3)
+class Optimizer_SGD:
+    def __init__(self, learning_rate=1., decay=0., momentum=0.):
+        self.learning_rate = learning_rate
+        self.current_learning_rate = learning_rate
+        self.decay = decay
+        self.iterations = 0
+        self.momentum = momentum
+
+    def pre_update_params(self):
+        if self.decay:
+            self.current_learning_rate = self.learning_rate * \
+            (1. / (1. + self.decay * self.iterations))
 
 
-dense1 = Layer_Dense(2, 3)
+    def update_params(self, layer):
+
+        if self.momentum:
+            if not hasattr(layer, 'weight_momentum'):
+                layer.weight_momentum = np.zeros_like(layer.weights)
+                layer.bias_momentum = np.zeros_like(layer.biases)
+            
+            weight_updates = \
+                self.momentum * layer.weight_momentums - \
+                self.current_learning_rate * layer.dweights
+            layer.weight_momentums = weight_updates
+
+            bias_updates = \
+                self.momentum * layer.bias_momentums - \
+                self.current_learning_rate * layer.dbiases
+            layer.bias_momentums = bias_updates
+
+        else:
+            weight_updates = -self.current_learning_rate * \
+                            layer.dweights
+            bias_updates = -self.current_learning_rate * \
+                            layer.dbiases
+       
+        layer.weight_cache += layer.dweight**2
+        layer.bias_cache += layer.dbias**2
+        
+        weight_updates = -self.current_learning_rate * \
+                            layer.dweights
+        bias_updates = -self.current_learning_rate * \
+                            layer.dbiases
+
+        layer.weights += weight_updates
+        layer.biases += bias_updates
+
+    def post_update_params(self):
+        self.iterations += 1
+    
+
+class Optimizer_Adagrad:
+    def __init__(self, learning_rate=1., decay=0, epsilon=1e-7):
+        self.learning_rate = learning_rate
+        self.current_learning_rate = learning_rate
+        self.decay = decay
+        self.interations = 0
+        self.epsilon = epsilon
+
+    def pre_update_params(self):
+        if self.decay:
+            self.current_learning_rate = self.learning_rate * \
+            (1. / (1. + self.decay * self.interations))
+
+    def update_params(self, layer):
+        if not hasattr(layer, 'weight_cache'):
+            layer.weight_cache = np.zeros_like(layer.weights)
+            layer.bias_cache = np.zeros_like(layer.biases)
+
+        layer.weight_cache += layer.dweights**2
+        layer.bias_cache += layer.dbiases**2
+
+        layer.weights += -self.current_learning_rate * \
+                        layer.dweights / \
+                        (np.sqrt(layer.weight_cache) + self.epsilon)
+        layer.biases += -self.current_learning_rate * \
+                        layer.dbiases / \
+                        (np.sqrt(layer.bias_cache) + self.epsilon)
+
+
+    def post_update_params(self):
+        self.interations += 1
+
+class Optimizer_RMSprop:
+    def __init__(self, learning_rate=0.001, decay=1, epsilon=1e-7, rho=0.9):
+        self.learning_rate = learning_rate
+        self.current_learning_rate = learning_rate
+        self.decay = decay
+        self.interations = 0
+        self.epsilon = epsilon
+        self.rho = rho
+
+    def pre_update_params(self):
+        if self.decay:
+            self.current_learning_rate = self.learning_rate * \
+                (1. / (1. + self.decay * self.interations))
+            
+    def update_params(self, layer):
+        if not hasattr(layer, 'weight_cache'):
+            layer.weight_cache = np.zeros_like(layer.weights)
+            layer.bias_cache = np.zeros_like(layer.biases)
+        
+        layer.weight_cache = self.rho * layer.weight_cache + \
+            (1 - self.rho) * layer.dweights**2
+        layer.bias_cache = self.rho * layer.bias_cache + \
+            (1 - self.rho) * layer.dbiases**2
+        
+        layer.weights += -self.current_learning_rate * \
+                         layer.dweights / \
+                         (np.sqrt(layer.weight_cache) + self.epsilon)
+        layer.biases += -self.current_learning_rate * \
+                         layer.dbiases / \
+                         (np.sqrt(layer.bias_cache) + self.epsilon)
+        
+    def post_update_params(self):
+        self.interations += 1
+
+class Optimizer_Adam:
+    def __init__(self,learning_rate=0.001, decay=0, epsilon=1e-7, beta_1=0.9, beta_2=0.999):
+        self.learning_rate = learning_rate
+        self.current_learning_rate = learning_rate
+        self.decay = decay
+        self.epsilon = epsilon
+        self.beta_1 = beta_1
+        self.beta_2 = beta_2
+
+X, y = spiral_data(samples=100, classes=3)
+
+
+dense1 = Layer_Dense(2, 64)
 activation1 = Activation_ReLU()
 
-dense2 = Layer_Dense(3, 3)
+dense2 = Layer_Dense(64, 3)
 loss_activation = Activation_Softmax_Loss_CategoricalCrossentropy()
 
-dense1.forward(X)
+optimizer = Optimizer_RMSprop(learning_rate=0.02, decay=1e-5, rho=0.999)
 
-activation1.forward(dense1.output)
-dense2.forward(activation1.output)
+for epoch in range(10001):
 
-loss = loss_activation.forward(dense2.output, y)
+    dense1.forward(X)
 
-print(loss_activation.output[:5])
+    activation1.forward(dense1.output)
+    
+    dense2.forward(activation1.output)
 
-print('loss:', loss)
+    loss = loss_activation.forward(dense2.output, y)
 
-predictions = np.argmax(loss_activation.output, axis=1)
-if len(y.shape) == 2:
-    y = np.argmax(y,axis=1)
-accuracy = np.mean(predictions==y)
+    predictions = np.argmax(loss_activation.output, axis=1)
+    if len(y.shape) == 2:
+        y = np.argmax(y, axis=1)
+    accuracy = np.mean(predictions==y)
 
-print('acc:', accuracy)
+    if not epoch % 100:
+        print(f'epoch: {epoch}, '+
+              f'acc: {accuracy:.3f}, ' +
+              f'loss: {loss:.3f}, ' +
+              f'lr: {optimizer.current_learning_rate}')
+    
+    loss_activation.backward(loss_activation.output, y)
+    dense2.backward(loss_activation.dinputs)
+    activation1.backward(dense2.dinputs)
+    dense1.backward(activation1.dinputs)
 
+    optimizer.pre_update_params()
+    optimizer.update_params(dense1)
+    optimizer.update_params(dense2)
+    optimizer.post_update_params()
 
-loss_activation.backward(loss_activation.output, y)
-dense2.backward(loss_activation.dinputs)
-activation1.backward(dense2.dinputs)
-dense1.backward(activation1.dinputs)
-
-print(dense1.weights)
-print(dense1.dbaises)
-print(dense2.dweights)
-print(dense2.dbaises)
-
-        
 plt.plot(X, y)
 plt.show()
+
+            
