@@ -1,8 +1,3 @@
-URL = 'https://nnfs.io/datasets/fashion_mnist_images.zip'
-FILE = 'fashion_mnist_images.zip'
-FOLDER = 'fashion_mnist_images'
-
-
 import numpy as np
 import nnfs
 import os
@@ -10,7 +5,6 @@ import cv2
 import pickle
 import copy
 
-nnfs.init()
 
 
 class Layer_Dense:
@@ -712,6 +706,7 @@ class Model:
     def load_parameters(self, path):
         with open(path, 'rb') as f:
             self.set_parameters(pickle.load(f))
+
     def save(self, path):
         model = copy.deepcopy(self)
 
@@ -774,12 +769,12 @@ fashion_mnist_labels = {
 
 image_data = cv2.imread('pants.png', cv2.IMREAD_GRAYSCALE)
 
-image_data = cv2.resize(image_data, (28, 28), image_data = None)
+image_data = cv2.resize(image_data, (28, 28))
 image_data = 255 - image_data
 
 image_data = (image_data.reshape(1, -1).astype(np.float32) - 127.5) / 127.5
 
-model = Model.load('fashion_mnist.model')
+model = Model.load('model/fashion_mnist.model')
 
 confidences = model.predict(image_data)
 
